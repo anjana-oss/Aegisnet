@@ -4,6 +4,7 @@ from sqlmodel import SQLModel, create_engine, Field
 from sqlmodel import Session
 from sqlmodel import select
 from jose import jwt
+import bcrypt
 
 app = FastAPI()
 
@@ -28,12 +29,7 @@ class LoginRequest(BaseModel):
 
 class Update(BaseModel):
     username: str
-    email: str
     password: str
-
-
-class Delete(BaseModel):
-    email: str
 
 
 DATABASE_URL = "postgresql://postgres:postgres@localhost:5432/aegisnet"
@@ -54,8 +50,9 @@ except Exception as e:
 @app.post("/usercreate")
 def signup(newuser: UserCreate):
     with Session(engine) as session:
+        hashed_pass=bcrypt.hashpw(newuser.password.encode(),bcrypt.gensalt()).decode()
         signup_db = User(
-            username=newuser.username, email=newuser.email, password=newuser.password
+            username=newuser.username, email=newuser.email, password=hashed_pass
         )
 
         session.add(signup_db)
@@ -69,6 +66,12 @@ def createtoken(email):
     token = jwt.encode(payload, SECRET_KEY, ALGORITHM)
     return token
 
+def verify_token(token):
+    payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+    if not payload:
+        return "token not valid"
+    return payload["email"]
+
 
 @app.post("/userlogin")
 def login(login: LoginRequest):
@@ -80,39 +83,39 @@ def login(login: LoginRequest):
         if not found_user:
             return {"message": "user not found"}
 
-        if found_user.password != login.password:
+        if not bcrypt.checkpw(login.password.encode(),found_user.password.encode()):
             return {"message": "wrong password"}
 
         token = createtoken(found_user.email)
         return {"access_token": token}
 
 
-def verify_token(token):
-    payload = jwt.decode(token, SECRET_KEY, ALGORITHM)
-    if not payload:
-        return "token not valid"
-    return payload["email"]
-
 
 @app.get("/viewuser")
-def viewuser():
+def viewuser(token:str):
     with Session(engine) as session:
-        statement = select(User)
-        res = session.exec(statement).all()
-        return res
+        email=verify_token(token)
+        
+        statement = select(User).where(User.email==email)
+        found_user=session.exec(statement).first()
+        
+        if not found_user:
+            return "token wrong"
+        return found_user
 
 
 @app.put("/updatevalues")
-def update(new: Update):
+def update(new: Update,token:str):
     with Session(engine) as session:
-        statement = select(User).where(User.email == new.email)
+        email=verify_token(token)
+        
+        statement = select(User).where(User.email ==email)
         found_user = session.exec(statement).first()
 
         if not found_user:
             return {"message": "user not found"}
 
         if found_user:
-            found_user.email = new.email
             found_user.username = new.username
             found_user.password = new.password
 
@@ -121,9 +124,10 @@ def update(new: Update):
 
 
 @app.delete("/deletedata")
-def delete(new: Delete):
+def delete(token:str):
     with Session(engine) as session:
-        statement = select(User).where(User.email == new.email)
+        email=verify_token(token)
+        statement = select(User).where(User.email == email)
         found_user = session.exec(statement).first()
 
         if not found_user:

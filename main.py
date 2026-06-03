@@ -92,10 +92,20 @@ def login(login: LoginRequest):
         found_user = session.exec(statement).first()
 
         if not found_user:
+            log = Activitylog(
+            email=login.email, action="LOGIN_FAILED", timestamp=datetime.now()
+        )
+            session.add(log)
+            session.commit()
             return {"message": "user not found"}
 
         if not bcrypt.checkpw(login.password.encode(), found_user.password.encode()):
-            return {"message": "wrong password"}
+            log = Activitylog(
+            email=found_user.email, action="LOGIN_FAILED", timestamp=datetime.now()
+        ) 
+            session.add(log)
+            session.commit()
+            return {"message":'login failed'}
 
         log = Activitylog(
             email=found_user.email, action="LOGIN", timestamp=datetime.now()
@@ -117,6 +127,7 @@ def viewuser(token: str):
         found_user = session.exec(statement).first()
 
         if not found_user:
+            
             return "token wrong"
         log = Activitylog(email=email, action="VIEW_PROFILE", timestamp=datetime.now())
         session.add(log)
@@ -173,3 +184,18 @@ def delete(token: str):
         session.delete(found_user)
         session.commit()
         return {"message": "row deleted"}
+
+
+@app.get("/viewlogs")
+def log(token: str):
+    with Session(engine) as session:
+        payload = verify_token(token)
+        print(payload)
+        role = payload["role"]
+        if role != "admin":
+            return {"message": "access denied"}
+
+        statement = select(Activitylog)
+        found = session.exec(statement).all()
+
+        return found

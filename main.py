@@ -25,6 +25,14 @@ class Activitylog(SQLModel, table=True):
     timestamp: datetime
 
 
+class Alert(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    email:str
+    reason:str
+    severity:str
+    timestamp:datetime
+
+
 class UserCreate(BaseModel):
     username: str
     email: str
@@ -43,7 +51,6 @@ class Update(BaseModel):
 
 DATABASE_URL = "postgresql://postgres:postgres@localhost:5432/aegisnet"
 engine = create_engine(DATABASE_URL)
-SQLModel.metadata.create_all(engine)
 SQLModel.metadata.create_all(engine)
 SECRET_KEY = "hjgjhihu8476"
 ALGORITHM = "HS256"
@@ -90,22 +97,50 @@ def login(login: LoginRequest):
 
         statement = select(User).where(User.email == login.email)
         found_user = session.exec(statement).first()
+        print(found_user)
 
         if not found_user:
             log = Activitylog(
-            email=login.email, action="LOGIN_FAILED", timestamp=datetime.now()
-        )
+                email=login.email, action="LOGIN_FAILED", timestamp=datetime.now()
+            )
             session.add(log)
             session.commit()
+            statement=select(Activitylog).where(Activitylog.email==login.email,Activitylog.action=="LOGIN_FAILED")
+            failed=session.execute(statement).all()
+            count=len(failed)
+            
+            if count==5:
+                alert=Alert(email=login.email,
+                            reason="LOGIN_FAILED too many times",
+                            severity="high",
+                            timestamp=datetime.now()
+                            )
+                session.add(alert)
+                session.commit()
+                
             return {"message": "user not found"}
-
+        print(bcrypt.checkpw(login.password.encode(), found_user.password.encode()))
         if not bcrypt.checkpw(login.password.encode(), found_user.password.encode()):
             log = Activitylog(
-            email=found_user.email, action="LOGIN_FAILED", timestamp=datetime.now()
-        ) 
+                email=found_user.email, action="LOGIN_FAILED", timestamp=datetime.now()
+            )
             session.add(log)
             session.commit()
-            return {"message":'login failed'}
+            statement=select(Activitylog).where(Activitylog.email==login.email,Activitylog.action=="LOGIN_FAILED")
+            failed=session.execute(statement).all()
+            count=len(failed)
+            
+            if count==5:
+                alert=Alert(email=login.email,
+                            reason="LOGIN_FAILED too many times",
+                            severity="high",
+                            timestamp=datetime.now()
+                            )
+                session.add(alert)
+                session.commit()
+            
+            
+            return {"message": "login failed"}
 
         log = Activitylog(
             email=found_user.email, action="LOGIN", timestamp=datetime.now()
@@ -127,7 +162,7 @@ def viewuser(token: str):
         found_user = session.exec(statement).first()
 
         if not found_user:
-            
+
             return "token wrong"
         log = Activitylog(email=email, action="VIEW_PROFILE", timestamp=datetime.now())
         session.add(log)
@@ -190,7 +225,6 @@ def delete(token: str):
 def log(token: str):
     with Session(engine) as session:
         payload = verify_token(token)
-        print(payload)
         role = payload["role"]
         if role != "admin":
             return {"message": "access denied"}
@@ -199,3 +233,20 @@ def log(token: str):
         found = session.exec(statement).all()
 
         return found
+    
+    
+    
+    
+@app.get("/viewalerts")
+def alerts(token: str):
+    with Session(engine) as session:
+        payload = verify_token(token)
+        role = payload["role"]
+        if role != "admin":
+            return {"message": "access denied"}
+
+        statement = select(Alert)
+        alerts= session.exec(statement).all()
+
+        return alerts
+

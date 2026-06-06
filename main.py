@@ -16,6 +16,8 @@ class User(SQLModel, table=True):
     email: str
     password: str
     role: str = "user"
+    locked_out: bool = False
+    risk_score: int = 0
 
 
 class Activitylog(SQLModel, table=True):
@@ -27,10 +29,10 @@ class Activitylog(SQLModel, table=True):
 
 class Alert(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
-    email:str
-    reason:str
-    severity:str
-    timestamp:datetime
+    email: str
+    reason: str
+    severity: str
+    timestamp: datetime
 
 
 class UserCreate(BaseModel):
@@ -49,6 +51,14 @@ class Update(BaseModel):
     password: str
 
 
+class UnlockUser(BaseModel):
+    email: str
+
+
+class Investigate(BaseModel):
+    email: str
+
+
 DATABASE_URL = "postgresql://postgres:postgres@localhost:5432/aegisnet"
 engine = create_engine(DATABASE_URL)
 SQLModel.metadata.create_all(engine)
@@ -62,6 +72,17 @@ try:
 except Exception as e:
     print("database not connected")
     print(e)
+
+
+def createtoken(email, role):
+    payload = {"email": email, "role": role}
+    token = jwt.encode(payload, SECRET_KEY, ALGORITHM)
+    return token
+
+
+def verify_token(token):
+    payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+    return payload
 
 
 @app.post("/usercreate")
@@ -80,24 +101,12 @@ def signup(newuser: UserCreate):
         return {"message": "deails added"}
 
 
-def createtoken(email, role):
-    payload = {"email": email, "role": role}
-    token = jwt.encode(payload, SECRET_KEY, ALGORITHM)
-    return token
-
-
-def verify_token(token):
-    payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-    return payload
-
-
 @app.post("/userlogin")
 def login(login: LoginRequest):
     with Session(engine) as session:
 
         statement = select(User).where(User.email == login.email)
         found_user = session.exec(statement).first()
-        print(found_user)
 
         if not found_user:
             log = Activitylog(
@@ -105,41 +114,52 @@ def login(login: LoginRequest):
             )
             session.add(log)
             session.commit()
-            statement=select(Activitylog).where(Activitylog.email==login.email,Activitylog.action=="LOGIN_FAILED")
-            failed=session.execute(statement).all()
-            count=len(failed)
-            
-            if count==5:
-                alert=Alert(email=login.email,
-                            reason="LOGIN_FAILED too many times",
-                            severity="high",
-                            timestamp=datetime.now()
-                            )
+            statement = select(Activitylog).where(
+                Activitylog.email == login.email, Activitylog.action == "LOGIN_FAILED"
+            )
+            failed = session.execute(statement).all()
+            count = len(failed)
+
+            if count == 5:
+                alert = Alert(
+                    email=login.email,
+                    reason="LOGIN_FAILED too many times",
+                    severity="high",
+                    timestamp=datetime.now(),
+                )
                 session.add(alert)
                 session.commit()
-                
+
             return {"message": "user not found"}
-        print(bcrypt.checkpw(login.password.encode(), found_user.password.encode()))
+
+        if found_user.locked_out:
+            print(found_user.locked_out)
+            return {"message": "account locked"}
+
         if not bcrypt.checkpw(login.password.encode(), found_user.password.encode()):
             log = Activitylog(
                 email=found_user.email, action="LOGIN_FAILED", timestamp=datetime.now()
             )
             session.add(log)
             session.commit()
-            statement=select(Activitylog).where(Activitylog.email==login.email,Activitylog.action=="LOGIN_FAILED")
-            failed=session.execute(statement).all()
-            count=len(failed)
-            
-            if count==5:
-                alert=Alert(email=login.email,
-                            reason="LOGIN_FAILED too many times",
-                            severity="high",
-                            timestamp=datetime.now()
-                            )
+
+            statement = select(Activitylog).where(
+                Activitylog.email == login.email, Activitylog.action == "LOGIN_FAILED"
+            )
+            failed = session.execute(statement).all()
+            count = len(failed)
+
+            if count == 5:
+                alert = Alert(
+                    email=login.email,
+                    reason="LOGIN_FAILED too many times",
+                    severity="high",
+                    timestamp=datetime.now(),
+                )
                 session.add(alert)
+                found_user.locked_out = True
+                found_user.risk_score += 10
                 session.commit()
-            
-            
             return {"message": "login failed"}
 
         log = Activitylog(
@@ -150,7 +170,7 @@ def login(login: LoginRequest):
         session.commit()
 
         token = createtoken(found_user.email, found_user.role)
-        return {"access_token": token}
+        return {"message": "login successful", "access_token": token}
 
 
 @app.get("/viewuser")
@@ -230,13 +250,11 @@ def log(token: str):
             return {"message": "access denied"}
 
         statement = select(Activitylog)
-        found = session.exec(statement).all()
+        logs = session.exec(statement).all()
 
-        return found
-    
-    
-    
-    
+        return logs
+
+
 @app.get("/viewalerts")
 def alerts(token: str):
     with Session(engine) as session:
@@ -246,7 +264,55 @@ def alerts(token: str):
             return {"message": "access denied"}
 
         statement = select(Alert)
-        alerts= session.exec(statement).all()
+        alerts = session.exec(statement).all()
 
         return alerts
 
+
+@app.post("/unlockuser")
+def unlock(new: UnlockUser, token: str):
+    with Session(engine) as session:
+        payload = verify_token(token)
+        role = payload["role"]
+        if role != "admin":
+            return {"message": "access denied"}
+        statement = select(User).where(User.email == new.email)
+        found_user = session.exec(statement).first()
+
+        if not found_user:
+            return {"message": "user not found"}
+        found_user.locked_out = False
+        session.commit()
+        return {"message": "user unlocked"}
+
+
+@app.get("/investigate_user")
+def investigate(new: Investigate, token: str):
+    with Session(engine) as session:
+        payload = verify_token(token)
+        role = payload["role"]
+
+        if role != "admin":
+            return {"message": "access denied"}
+
+        statement = select(User).where(User.email == new.email)
+        found_user = session.exec(statement).first()
+
+        if not found_user:
+            return {"message": "user not found"}
+        statement = select(Alert).where(Alert.email == new.email)
+        alerts = session.exec(statement).all()
+
+        statement = select(Activitylog).where(Activitylog.email == new.email)
+        logs = session.exec(statement).all()
+
+        return {
+            "email": found_user.email,
+            "username": found_user.username,
+            "role": found_user.role,
+            "id": found_user.id,
+            "locked_out": found_user.locked_out,
+            "risk_score": found_user.risk_score,
+            "alerts": alerts,
+            "logs": logs,
+        }

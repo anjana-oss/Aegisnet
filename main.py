@@ -6,6 +6,7 @@ from sqlmodel import select
 from jose import jwt
 import bcrypt
 from datetime import datetime
+from fastapi import Request
 
 app = FastAPI()
 
@@ -25,6 +26,8 @@ class Activitylog(SQLModel, table=True):
     email: str
     action: str
     timestamp: datetime
+    ip_address: str
+    user_agent: str | None = None
 
 
 class Alert(SQLModel, table=True):
@@ -102,7 +105,7 @@ def signup(newuser: UserCreate):
 
 
 @app.post("/userlogin")
-def login(login: LoginRequest):
+def login(login: LoginRequest, request: Request):
     with Session(engine) as session:
 
         statement = select(User).where(User.email == login.email)
@@ -110,7 +113,11 @@ def login(login: LoginRequest):
 
         if not found_user:
             log = Activitylog(
-                email=login.email, action="LOGIN_FAILED", timestamp=datetime.now()
+                email=login.email,
+                action="LOGIN_FAILED",
+                timestamp=datetime.now(),
+                ip_address=request.client.host,
+                user_agent=request.headers.get("User-Agent"),
             )
             session.add(log)
             session.commit()
@@ -138,7 +145,11 @@ def login(login: LoginRequest):
 
         if not bcrypt.checkpw(login.password.encode(), found_user.password.encode()):
             log = Activitylog(
-                email=found_user.email, action="LOGIN_FAILED", timestamp=datetime.now()
+                email=found_user.email,
+                action="LOGIN_FAILED",
+                timestamp=datetime.now(),
+                ip_address=request.client.host,
+                user_agent=request.headers.get("User-Agent"),
             )
             session.add(log)
             session.commit()
@@ -163,7 +174,11 @@ def login(login: LoginRequest):
             return {"message": "login failed"}
 
         log = Activitylog(
-            email=found_user.email, action="LOGIN", timestamp=datetime.now()
+            email=found_user.email,
+            action="LOGIN",
+            timestamp=datetime.now(),
+            ip_address=request.client.host,
+            user_agent=request.headers.get("User-Agent"),
         )
 
         session.add(log)
@@ -184,7 +199,13 @@ def viewuser(token: str):
         if not found_user:
 
             return "token wrong"
-        log = Activitylog(email=email, action="VIEW_PROFILE", timestamp=datetime.now())
+        log = Activitylog(
+            email=email,
+            action="VIEW_PROFILE",
+            timestamp=datetime.now(),
+            ip_address=request.client.host,
+            user_agent=request.headers.get("User-Agent"),
+        )
         session.add(log)
         session.commit()
 
@@ -213,7 +234,11 @@ def update(new: Update, token: str):
             session.commit()
 
         log = Activitylog(
-            email=email, action="UPDATE_PROFILE", timestamp=datetime.now()
+            email=email,
+            action="UPDATE_PROFILE",
+            timestamp=datetime.now(),
+            ip_address=request.client.host,
+            user_agent=request.headers.get("User-Agent"),
         )
         session.add(log)
         session.commit()
@@ -231,7 +256,11 @@ def delete(token: str):
         if not found_user:
             return {"message": "user not found"}
         log = Activitylog(
-            email=email, action="DELETE_PROFILE", timestamp=datetime.now()
+            email=email,
+            action="DELETE_PROFILE",
+            timestamp=datetime.now(),
+            ip_address=request.client.host,
+            user_agent=request.headers.get("User-Agent"),
         )
         session.add(log)
         session.commit()

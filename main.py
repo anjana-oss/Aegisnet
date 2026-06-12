@@ -7,6 +7,7 @@ from jose import jwt
 import bcrypt
 from datetime import datetime
 from fastapi import Request
+import requests
 
 app = FastAPI()
 
@@ -60,6 +61,18 @@ class UnlockUser(BaseModel):
 
 class Investigate(BaseModel):
     email: str
+    
+    
+class SessionTable(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    email: str
+    ip_address:str
+    user_agent: str
+    created_at:datetime
+    is_active:bool=False
+    country:str
+    city:str
+
 
 
 DATABASE_URL = "postgresql://postgres:postgres@localhost:5432/aegisnet"
@@ -185,7 +198,31 @@ def login(login: LoginRequest, request: Request):
         session.commit()
 
         token = createtoken(found_user.email, found_user.role)
+        ip=request.client.host
+        country,city=location(ip)
+        if country in SessionTable:
+            
+        sessions=SessionTable(email=found_user.email,
+                              ip_address=request.client.host,user_agent=request.headers.get("User-Agent"),
+                              created_at=datetime.now(),is_active=True, country=country,city=city
+                              )
+        session.add(sessions)
+        session.commit()
+        
         return {"message": "login successful", "access_token": token}
+
+def location(ip):
+    response=requests.get(f"http://ip-api.com/json/{ip}")
+    data=response.json()
+    if data["status"]=="fail":
+        return "unknown","unknown"
+    
+    country=data["country"]
+    city=data["city"]
+    return country,city
+
+
+
 
 
 @app.get("/viewuser")
@@ -214,6 +251,8 @@ def viewuser(token: str):
             "password": found_user.password,
             "username": found_user.username,
         }
+
+
 
 
 @app.put("/updatevalues")
@@ -245,6 +284,9 @@ def update(new: Update, token: str):
         return {"message": "row updated"}
 
 
+
+
+
 @app.delete("/deletedata")
 def delete(token: str):
     with Session(engine) as session:
@@ -270,6 +312,9 @@ def delete(token: str):
         return {"message": "row deleted"}
 
 
+
+
+
 @app.get("/viewlogs")
 def log(token: str):
     with Session(engine) as session:
@@ -284,6 +329,9 @@ def log(token: str):
         return logs
 
 
+
+
+
 @app.get("/viewalerts")
 def alerts(token: str):
     with Session(engine) as session:
@@ -296,6 +344,9 @@ def alerts(token: str):
         alerts = session.exec(statement).all()
 
         return alerts
+
+
+
 
 
 @app.post("/unlockuser")
@@ -313,6 +364,9 @@ def unlock(new: UnlockUser, token: str):
         found_user.locked_out = False
         session.commit()
         return {"message": "user unlocked"}
+
+
+
 
 
 @app.get("/investigate_user")
@@ -345,3 +399,34 @@ def investigate(new: Investigate, token: str):
             "alerts": alerts,
             "logs": logs,
         }
+
+
+
+
+
+@app.get("/my_sessions")
+def my_sessions(token:str):
+    with Session(engine)as session:
+        payload=verify_token(token)
+        email=payload["email"]
+        statement=select(SessionTable).where(SessionTable.email==email)
+        found_session=session.exec(statement).all()
+        return found_session
+    
+    
+    
+    
+    
+@app.post("/logout_sessions")
+def logout_session(token:str,id:int):
+    with Session(engine)as session:
+        payload=verify_token(token)
+        email=payload["email"]
+        statement=select(SessionTable).where((SessionTable.email==email) & (SessionTable.id==id))
+        found_session=session.exec(statement).first()
+        found_session.is_active=False
+        session.add(found_session)
+        session.commit()
+        return{"message":"logout success"}
+        
+    

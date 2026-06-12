@@ -204,8 +204,9 @@ def login(login: LoginRequest, request: Request):
         old_sessions=session.exec(statement).all()
         flag=0
         for sessions in old_sessions:
-            if sessions.country==country:
-                flag=1
+            if len(old_sessions)>0:
+                if sessions.country==country:
+                    flag=1
         if flag==0:
             new_alert=Alert(
                     email=login.email,
@@ -215,6 +216,24 @@ def login(login: LoginRequest, request: Request):
                 )
             session.add(new_alert)
             
+            
+            
+            
+        statement=select(SessionTable).where(SessionTable.email==found_user.email)
+        old_sessions=session.exec(statement).all()
+        flag=0
+        for sessions in old_sessions:
+            if len(old_sessions)>0:
+                if sessions.user_agent==request.headers.get("User-Agent"):
+                    flag=1
+        if flag==0:
+            new_alerts=Alert(
+                    email=login.email,
+                    reason="NEW_DEVICE_LOGIN",
+                    severity="high",
+                    timestamp=datetime.now(),
+                )
+            session.add(new_alerts)
             
         sessions=SessionTable(email=found_user.email,
                               ip_address=request.client.host,user_agent=request.headers.get("User-Agent"),

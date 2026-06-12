@@ -198,9 +198,23 @@ def login(login: LoginRequest, request: Request):
         session.commit()
 
         token = createtoken(found_user.email, found_user.role)
-        ip=request.client.host
+        ip="9.9.9.9"
         country,city=location(ip)
-        if country in SessionTable:
+        statement=select(SessionTable).where(SessionTable.email==found_user.email)
+        old_sessions=session.exec(statement).all()
+        flag=0
+        for sessions in old_sessions:
+            if sessions.country==country:
+                flag=1
+        if flag==0:
+            new_alert=Alert(
+                    email=login.email,
+                    reason="NEW_COUNRTY_LOGIN",
+                    severity="high",
+                    timestamp=datetime.now(),
+                )
+            session.add(new_alert)
+            
             
         sessions=SessionTable(email=found_user.email,
                               ip_address=request.client.host,user_agent=request.headers.get("User-Agent"),

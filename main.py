@@ -8,7 +8,7 @@ import bcrypt
 from datetime import datetime
 from fastapi import Request
 import requests
-
+from fastapi import WebSocket,WebSocketDisconnect
 
 app = FastAPI()
 
@@ -103,11 +103,29 @@ def verify_token(token):
 
 
 
+#helper function for country and city geolocation---------------------
+
+def location(ip):
+    response=requests.get(f"http://ip-api.com/json/{ip}")
+    data=response.json()
+    if data["status"]=="fail":
+        return "unknown","unknown"
+    
+    country=data["country"]
+    city=data["city"]
+    return country,city
+
+
+
+
+connections=[]
+
+
 
 
 #API----------------------------------------------------------------------------------------
 
-@app.post("/usercreate")
+@app.post("/signup")
 def signup(newuser: UserCreate):
     with Session(engine) as session:
         hashed_pass = bcrypt.hashpw(
@@ -262,18 +280,7 @@ def login(login: LoginRequest, request: Request):
         session.commit()
         
         return {"message": "login successful", "access_token": token}
-
-#helper function for country and city geolocation---------------------
-
-def location(ip):
-    response=requests.get(f"http://ip-api.com/json/{ip}")
-    data=response.json()
-    if data["status"]=="fail":
-        return "unknown","unknown"
     
-    country=data["country"]
-    city=data["city"]
-    return country,city
 
 
 
@@ -488,5 +495,20 @@ def logout_session(token:str,id:int):
     
     
 @app.websocket("/ws/alerts")
-async def alerts (websockets:Websockets):
+async def alerts (websocket:WebSocket,token:str):
+    await websocket.accept()
+    payload=verify_token(token)
+    email=payload["email"]
+    role=payload["role"]
     
+    if role!="admin":
+        await websocket.close()
+        return
+    connections.append({
+        "email":email,
+        "websocket":websocket})
+    print(connections)
+    while True:
+        for connection in connections:
+            await connection["websocket"].send_text("new_device_login_detected")  
+          

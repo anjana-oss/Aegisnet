@@ -465,3 +465,40 @@ async def alerts(websocket: WebSocket, token: str):
             await websocket.receive_text()
     except:
         connections.remove(...)
+
+
+
+
+
+@app.get("/admin_dashboard")
+def dashboard():
+    with Session (engine) as session:
+        users=session.exec(select(User)).all() 
+        alerts=session.exec(select(Alert)).all()     
+        
+        
+        count={}
+        for alert in alerts:
+            email=alert.email
+            
+            if email not in count:
+                count[email]=1
+            else:
+                count[email]+=1
+                
+        max_email=None
+        max_count=0
+            
+        for email,count in count.items():
+            if count>max_count:
+                max_count=count
+                max_email=email
+                
+                
+                
+            return{
+                "total_users":len(users),
+                "alerts":len(alerts),
+                "high_alert_user":max_email,
+                "alerts_of_user":max_count
+            }

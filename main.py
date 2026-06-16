@@ -467,167 +467,210 @@ async def alerts(websocket: WebSocket, token: str):
         connections.remove(...)
 
 
-
-
-
 @app.get("/admin_dashboard")
 def dashboard():
-    with Session (engine) as session:
-        users=session.exec(select(User)).all() 
-        alerts=session.exec(select(Alert)).all()     
-        
-        
-        count={}
+    with Session(engine) as session:
+        users = session.exec(select(User)).all()
+        alerts = session.exec(select(Alert)).all()
+
+        count = {}
         for alert in alerts:
-            email=alert.email
-            
+            email = alert.email
+
             if email not in count:
-                count[email]=1
+                count[email] = 1
             else:
-                count[email]+=1
-                
-        max_email=None
-        max_count=0
-            
-        for email,count in count.items():
-            if count>max_count:
-                max_count=count
-                max_email=email
-                
-                
-                
-            return{
-                "total_users":len(users),
-                "alerts":len(alerts),
-                "high_alert_user":max_email,
-                "alerts_of_user":max_count
+                count[email] += 1
+
+        max_email = None
+        max_count = 0
+
+        for email, count in count.items():
+            if count > max_count:
+                max_count = count
+                max_email = email
+
+            return {
+                "total_users": len(users),
+                "alerts": len(alerts),
+                "high_alert_user": max_email,
+                "alerts_of_user": max_count,
             }
-            
-            
-            
-            
-            
+
+
 @app.get("/investigate/{email}")
-def investigate_session(email:str):
-    with Session (engine)as session:
-        
-        statement=select(User).where(User.email==email)
-        user=session.exec(statement).first() 
+def investigate_session(email: str):
+    with Session(engine) as session:
+
+        statement = select(User).where(User.email == email)
+        user = session.exec(statement).first()
         if not user:
-            return {"message":'user not found'}
-        
-        statement=select(Alert).where(Alert.email==email)
-        alerts=session.exec(statement).all() 
-        alert_list=[]
+            return {"message": "user not found"}
+
+        statement = select(Alert).where(Alert.email == email)
+        alerts = session.exec(statement).all()
+        alert_list = []
         for alert in alerts:
-            alert_list.append({"severity":alert.severity,
-            "reason":alert.reason,
-            "timestamp":alert.timestamp})
-        
-        statement=select(Activitylog).where(Activitylog.email==email)
-        activity=session.exec(statement).all() 
-        activities=[]
+            alert_list.append(
+                {
+                    "severity": alert.severity,
+                    "reason": alert.reason,
+                    "timestamp": alert.timestamp,
+                }
+            )
+
+        statement = select(Activitylog).where(Activitylog.email == email)
+        activity = session.exec(statement).all()
+        activities = []
         for act in activity:
-           activities.append({ "action":act.action,
-            "timestamp":act.timestamp
-            })
-           
-        
-        statement=select(SessionTable).where(SessionTable.email==email)
-        sessions=session.exec(statement).all() 
-        all_session=[]
+            activities.append({"action": act.action, "timestamp": act.timestamp})
+
+        statement = select(SessionTable).where(SessionTable.email == email)
+        sessions = session.exec(statement).all()
+        all_session = []
         for s in sessions:
-            all_session.append({
-            "created_at":s.created_at,
-            "is_active":s.is_active,
-            "country":s.country,
-            "city":s.city,
-            "user_agent":s.user_agent,
-            "ip_address":s.ip_address})
-            
-        
-        return{
-            "user_summary":{"username":user.username,"role":user.role,
-                            "risk_score":user.risk_score,
-                            "locked_out":user.locked_out},
-            "alerts":alert_list,
-            "activity":activities,
-            "sessions":all_session
-           
+            all_session.append(
+                {
+                    "created_at": s.created_at,
+                    "is_active": s.is_active,
+                    "country": s.country,
+                    "city": s.city,
+                    "user_agent": s.user_agent,
+                    "ip_address": s.ip_address,
+                }
+            )
+
+        return {
+            "user_summary": {
+                "username": user.username,
+                "role": user.role,
+                "risk_score": user.risk_score,
+                "locked_out": user.locked_out,
+            },
+            "alerts": alert_list,
+            "activity": activities,
+            "sessions": all_session,
         }
-        
-        
-        
-        
+
+
 @app.delete("/delete/session/{id}")
-def delete(id:int):
-    with Session (engine)as session:
-        statement=select(SessionTable).where(SessionTable.id==id)
-        user=session.exec(statement).first()
-        
+def delete(id: int):
+    with Session(engine) as session:
+        statement = select(SessionTable).where(SessionTable.id == id)
+        user = session.exec(statement).first()
+
         session.delete(user)
         session.commit()
-        return{"message":"session deleted"}
-    
-    
-    
+        return {"message": "session deleted"}
+
 
 @app.delete("/logout_all/{email}")
-def logout(email:str):
-    with Session (engine)as session:
-        statement=select(SessionTable).where(SessionTable.email==email)
-        users=session.exec(statement).all()
-        
+def logout(email: str):
+    with Session(engine) as session:
+        statement = select(SessionTable).where(SessionTable.email == email)
+        users = session.exec(statement).all()
+
         for user in users:
             session.delete(user)
         session.commit()
-        return{"message":"session deleted"}
-        
-        
-        
-        
-        
-        
-        
+        return {"message": "session deleted"}
+
+
 @app.get("/high_riskscore_users/")
 def riskusers():
-    with Session(engine)as session:
-        statement=select(User).where(User.risk_score>=5)
-        users=session.exec(statement).all()
-        lists=[]
+    with Session(engine) as session:
+        statement = select(User).where(User.risk_score >= 5)
+        users = session.exec(statement).all()
+        lists = []
         for user in users:
-            lists.append({
-                "username":user.username,
-                "role":user.role,
-                "risk_score":user.risk_score,
-                 "locked_out":user.locked_out         
-            })    
+            lists.append(
+                {
+                    "username": user.username,
+                    "role": user.role,
+                    "risk_score": user.risk_score,
+                    "locked_out": user.locked_out,
+                }
+            )
         return lists
-            
-            
-            
-            
-            
-            
+
+
 @app.get("/timeline/{email}")
-def timeline(email:str):
-        with Session (engine)as session:
-            statement=(select(Activitylog).where(Activitylog.email==email).order_by(Activitylog.timestamp))
-            users=session.exec(statement).all() 
-            
-            lists=[]
-            for user in users:
-                lists.append({
-                    "action":user.action,
-                    "timestamp":user.timestamp,
-                    "ip_address":user.ip_address    
-                })
-                
-            return lists
-        
-        
-        
-        
-        
-        
-        
+def timeline(email: str):
+    with Session(engine) as session:
+        statement = (
+            select(Activitylog)
+            .where(Activitylog.email == email)
+            .order_by(Activitylog.timestamp)
+        )
+        users = session.exec(statement).all()
+
+        lists = []
+        for user in users:
+            lists.append(
+                {
+                    "action": user.action,
+                    "timestamp": user.timestamp,
+                    "ip_address": user.ip_address,
+                }
+            )
+
+        return lists
+
+
+@app.get("/security_report/{email}")
+def security_report(email: str):
+
+    with Session(engine) as session:
+        statement = select(User).where(User.email == email)
+        user = session.exec(statement).first()
+        if not user:
+            return {"message": "user not found"}
+
+        statement = select(Alert).where(Alert.email == email)
+        alerts = session.exec(statement).all()
+
+        statement = select(Activitylog).where(Activitylog.email == email)
+        activities = session.exec(statement).all()
+
+        statement = select(SessionTable).where(SessionTable.email == email)
+        sessions = session.exec(statement).all()
+
+        alert_count = len(alerts)
+        activity_count = len(activities)
+        active_sessions = len(sessions)
+
+        failed_login_count = 0
+        for activity in activities:
+            if activity.action == "LOGIN_FAILED":
+                failed_login_count += 1
+        risk_score = user.risk_score
+
+        if risk_score > 80:
+            grade = "F"
+            recommendation = "Reset password and review active sessions"
+        elif risk_score > 60:
+            grade = "D"
+            recommendation = "Monitor account activity closely"
+        elif risk_score > 40:
+            grade = "C"
+            recommendation = "Review recent alerts"
+        elif risk_score > 20:
+            grade = "B"
+            recommendation = "Account is mostly secure"
+        else:
+            grade = "A"
+            recommendation = "Account appears secure"
+
+        return {
+            "username": user.username,
+            "email": user.email,
+            "role": user.role,
+            "risk_score": risk_score,
+            "security_grade": grade,
+            "locked_out": user.locked_out,
+            "alerts_count": alert_count,
+            "activity_count": activity_count,
+            "failed_login_count": failed_login_count,
+            "active_sessions": active_sessions,
+            "recommendation": recommendation,
+        }

@@ -558,3 +558,54 @@ def investigate_session(email:str):
         
         
         
+        
+@app.delete("/delete/session/{id}")
+def delete(id:int):
+    with Session (engine)as session:
+        statement=select(SessionTable).where(SessionTable.id==id)
+        user=session.exec(statement).first()
+        
+        session.delete(user)
+        session.commit()
+        return{"message":"session deleted"}
+    
+    
+    
+
+@app.delete("/logout_all/{email}")
+def logout(email:str):
+    with Session (engine)as session:
+        statement=select(SessionTable).where(SessionTable.email==email)
+        users=session.exec(statement).all()
+        
+        for user in users:
+            session.delete(user)
+        
+        
+        session.commit()
+        return{"message":"session deleted"}
+        
+        
+        
+        
+        
+        
+        
+@app.get("/high_score_users/")
+def riskusers():
+    with Session(engine)as session:
+        statement=select(User).where(User.risk_score>=5)
+        users=session.exec(statement).all()
+        lists=[]
+        for user in users:
+            lists.append({
+                "username":user.username,
+                "role":user.role,
+                "risk_score":user.risk_score,
+                "locked_out":user.locked_out
+                
+            })
+            
+        return lists
+            
+            

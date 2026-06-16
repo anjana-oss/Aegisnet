@@ -580,8 +580,6 @@ def logout(email:str):
         
         for user in users:
             session.delete(user)
-        
-        
         session.commit()
         return{"message":"session deleted"}
         
@@ -591,7 +589,7 @@ def logout(email:str):
         
         
         
-@app.get("/high_score_users/")
+@app.get("/high_riskscore_users/")
 def riskusers():
     with Session(engine)as session:
         statement=select(User).where(User.risk_score>=5)
@@ -602,10 +600,34 @@ def riskusers():
                 "username":user.username,
                 "role":user.role,
                 "risk_score":user.risk_score,
-                "locked_out":user.locked_out
-                
-            })
-            
+                 "locked_out":user.locked_out         
+            })    
         return lists
             
             
+            
+            
+            
+            
+@app.get("/timeline/{email}")
+def timeline(email:str):
+        with Session (engine)as session:
+            statement=(select(Activitylog).where(Activitylog.email==email).order_by(Activitylog.timestamp))
+            users=session.exec(statement).all() 
+            
+            lists=[]
+            for user in users:
+                lists.append({
+                    "action":user.action,
+                    "timestamp":user.timestamp,
+                    "ip_address":user.ip_address    
+                })
+                
+            return lists
+        
+        
+        
+        
+        
+        
+        

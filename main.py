@@ -89,8 +89,11 @@ def createtoken(email, role):
 
 
 def verify_token(token):
-    payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-    return payload
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        return payload
+    except:
+        return None
 
 
 # helper function for country and city geolocation---------------------
@@ -116,49 +119,48 @@ connections = []
 @app.post("/signup")
 def signup(newuser: UserCreate):
     with Session(engine) as session:
-        hashed_pass = bcrypt.hashpw(
+        hashed_password = bcrypt.hashpw(
             newuser.password.encode(), bcrypt.gensalt()
         ).decode()
-        signup_db = User(
-            username=newuser.username, email=newuser.email, password=hashed_pass
+        new_user = User(
+            username=newuser.username, email=newuser.email, password=hashed_password
         )
-        session.add(signup_db)
+        session.add(new_user)
         session.commit()
         return {"message": "deails added"}
 
 
-@app.post("/userlogin")
+@app.post("/login")
 async def login(login: LoginRequest, request: Request):
     with Session(engine) as session:
         statement = select(User).where(User.email == login.email)
         found_user = session.exec(statement).first()
 
         if not found_user:
-            log = Activitylog(
+            activity_log = Activitylog(
                 email=login.email,
                 action="LOGIN_FAILED",
                 timestamp=datetime.now(),
                 ip_address=request.client.host,
                 user_agent=request.headers.get("User-Agent"),
             )
-            session.add(log)
+            session.add(activity_log)
             session.commit()
-            print("b")
 
             statement = select(Activitylog).where(
                 Activitylog.email == login.email, Activitylog.action == "LOGIN_FAILED"
             )
-            failed = session.execute(statement).all()
-            count = len(failed)
+            failed_login = session.execute(statement).all()
+            failed_login_count = len(failed_login)
 
-            if count == 5:
-                alert = Alert(
+            if failed_login_count == 5:
+                new_alert = Alert(
                     email=login.email,
                     reason="LOGIN_FAILED too many times",
                     severity="high",
                     timestamp=datetime.now(),
                 )
-                session.add(alert)
+                session.add(new_alert)
                 session.commit()
 
                 for connection in connections:
@@ -172,14 +174,14 @@ async def login(login: LoginRequest, request: Request):
             return {"message": "account locked"}
 
         if not bcrypt.checkpw(login.password.encode(), found_user.password.encode()):
-            log = Activitylog(
+            activity_log = Activitylog(
                 email=found_user.email,
                 action="LOGIN_FAILED",
                 timestamp=datetime.now(),
                 ip_address=request.client.host,
                 user_agent=request.headers.get("User-Agent"),
             )
-            session.add(log)
+            session.add(activity_log)
             session.commit()
 
             statement = select(Activitylog).where(
@@ -188,13 +190,13 @@ async def login(login: LoginRequest, request: Request):
             failed = session.execute(statement).all()
             count = len(failed)
             if count == 5:
-                alert = Alert(
+                new_alert = Alert(
                     email=login.email,
                     reason="LOGIN_FAILED too many times",
                     severity="high",
                     timestamp=datetime.now(),
                 )
-                session.add(alert)
+                session.add(new_alert)
 
                 for connection in connections:
                     await connection["websocket"].send_text(
@@ -206,57 +208,61 @@ async def login(login: LoginRequest, request: Request):
                 session.commit()
             return {"message": "login failed"}
 
-        log = Activitylog(
+        activity_log = Activitylog(
             email=found_user.email,
             action="LOGIN",
             timestamp=datetime.now(),
             ip_address=request.client.host,
             user_agent=request.headers.get("User-Agent"),
         )
-        session.add(log)
+        session.add(activity_log)
         session.commit()
         token = createtoken(found_user.email, found_user.role)
 
-        ip = request.client.host
+        ip = "9.9.9.9"
         country, city = location(ip)
         statement = select(SessionTable).where(SessionTable.email == found_user.email)
         old_sessions = session.exec(statement).all()
         if len(old_sessions) == 0:
             pass
         else:
-            country_found = 0
+            country_found = False
             for sessions in old_sessions:
                 if len(old_sessions) > 0:
                     if sessions.country == country:
-                        country_found = 1
-            if country_found == 0:
+                        country_found = True
+            if country_found == False:
                 new_alert = Alert(
                     email=login.email,
                     reason="NEW_COUNRTY_LOGIN",
                     severity="high",
                     timestamp=datetime.now(),
                 )
-            session.add(new_alert)
+                session.add(new_alert)
             for connection in connections:
                 await connection["websocket"].send_text("NEW_COUNRTY_LOGIN")
 
         statement = select(SessionTable).where(SessionTable.email == found_user.email)
         old_sessions = session.exec(statement).all()
-        country_found = 0
-        for sessions in old_sessions:
-            if len(old_sessions) > 0:
-                if sessions.user_agent == request.headers.get("User-Agent"):
-                    country_found = 1
-        if country_found == 0:
-            new_alerts = Alert(
-                email=login.email,
-                reason="NEW_DEVICE_LOGIN",
-                severity="high",
-                timestamp=datetime.now(),
-            )
-            session.add(new_alerts)
 
-        sessions = SessionTable(
+        if len(old_sessions) == 0:
+            pass
+        else:
+            device_found = False
+            for existing_session in old_sessions:
+                if len(old_sessions) > 0:
+                    if existing_session.user_agent == request.headers.get("User-Agent"):
+                        device_found = True
+            if device_found == False:
+                new_alert = Alert(
+                    email=login.email,
+                    reason="NEW_DEVICE_LOGIN",
+                    severity="high",
+                    timestamp=datetime.now(),
+                )
+                session.add(new_alert)
+
+        new_session = SessionTable(
             email=found_user.email,
             ip_address=request.client.host,
             user_agent=request.headers.get("User-Agent"),
@@ -265,52 +271,55 @@ async def login(login: LoginRequest, request: Request):
             country=country,
             city=city,
         )
-        session.add(sessions)
+        session.add(new_session)
         session.commit()
 
         return {"message": "login successful", "access_token": token}
 
 
 @app.get("/viewuser")
-def viewuser(token: str):
+def viewuser(token: str, request: Request):
     with Session(engine) as session:
         payload = verify_token(token)
+        if not payload:
+            return {"message": "invalid token"}
         email = payload["email"]
         statement = select(User).where(User.email == email)
         found_user = session.exec(statement).first()
-        if not found_user:
-
-            return "token wrong"
-        log = Activitylog(
+        activity_log = Activitylog(
             email=email,
             action="VIEW_PROFILE",
             timestamp=datetime.now(),
             ip_address=request.client.host,
             user_agent=request.headers.get("User-Agent"),
         )
-        session.add(log)
+        session.add(activity_log)
         session.commit()
         return {
             "email": found_user.email,
-            "password": found_user.password,
             "username": found_user.username,
         }
 
 
 @app.put("/updatevalues")
-def update(new: Update, token: str):
+def update(new: Update, token: str, request: Request):
     with Session(engine) as session:
         payload = verify_token(token)
+        if not payload:
+            return {"message": "invalid token"}
         email = payload["email"]
 
         statement = select(User).where(User.email == email)
         found_user = session.exec(statement).first()
+        
         if not found_user:
             return {"message": "user not found"}
-        if found_user:
-            found_user.username = new.username
-            found_user.password = new.password
-            session.commit()
+        hashed_password = bcrypt.hashpw(
+            new.password.encode(), bcrypt.gensalt()
+        ).decode()
+        found_user.username = new.username
+        found_user.password = hashed_password  
+        session.commit()
 
         log = Activitylog(
             email=email,
@@ -325,46 +334,59 @@ def update(new: Update, token: str):
 
 
 @app.delete("/deletedata")
-def delete(token: str):
+def deletedata(token: str,request:Request):
     with Session(engine) as session:
         payload = verify_token(token)
+        if not payload:
+            return {"message": "invalid token"}
         email = payload["email"]
         statement = select(User).where(User.email == email)
         found_user = session.exec(statement).first()
 
         if not found_user:
             return {"message": "user not found"}
-        log = Activitylog(
+        activity_log = Activitylog(
             email=email,
             action="DELETE_PROFILE",
             timestamp=datetime.now(),
             ip_address=request.client.host,
             user_agent=request.headers.get("User-Agent"),
         )
-        session.add(log)
-        session.commit()
+        session.add(activity_log)
         session.delete(found_user)
         session.commit()
         return {"message": "row deleted"}
 
 
 @app.get("/viewlogs")
-def log(token: str):
+def view_log(token: str, limit: int=10, page: int = 1, action: str = None):
     with Session(engine) as session:
         payload = verify_token(token)
+        if not payload:
+            return {"message": "invalid token"}
         role = payload["role"]
         if role != "admin":
             return {"message": "access denied"}
-
+        
+        if page<1:
+            return{"message":"page must be greater than 0"}
+        if limit<1:
+            return{"message":"limit must be greater than 0"}
+        offset = (page - 1) * limit
         statement = select(Activitylog)
+        if action:
+            statement = select(Activitylog).where(Activitylog.action == action)
+        statement = statement.offset(offset).limit(limit)
         logs = session.exec(statement).all()
         return logs
 
 
 @app.get("/viewalerts")
-def alerts(token: str):
+def view_alert(token: str):
     with Session(engine) as session:
         payload = verify_token(token)
+        if not payload:
+            return {"message": "invalid token"}
         role = payload["role"]
         if role != "admin":
             return {"message": "access denied"}
@@ -374,10 +396,12 @@ def alerts(token: str):
         return alerts
 
 
-@app.post("/unlockuser")
-def unlock(new: UnlockUser, token: str):
+@app.post("/unlock_user")
+def unlock_user(new: UnlockUser, token: str,request:Request):
     with Session(engine) as session:
         payload = verify_token(token)
+        if not payload:
+            return {"message": "invalid token"}
         role = payload["role"]
         if role != "admin":
             return {"message": "access denied"}
@@ -387,28 +411,36 @@ def unlock(new: UnlockUser, token: str):
         if not found_user:
             return {"message": "user not found"}
         found_user.locked_out = False
+        activity_log=Activitylog(
+            email=payload["email"],
+            action="UNLOCK_USER",
+            timestamp=datetime.now(),
+            ip_address=request.client.host)
+        session.add(activity_log)
         session.commit()
         return {"message": "user unlocked"}
 
 
-@app.get("/investigate_user")
-def investigate(new: Investigate, token: str):
+@app.post("/investigate_user")
+def investigate_user(target: Investigate, token: str):
     with Session(engine) as session:
         payload = verify_token(token)
+        if not payload:
+            return {"message": "invalid token"}
         role = payload["role"]
 
         if role != "admin":
             return {"message": "access denied"}
 
-        statement = select(User).where(User.email == new.email)
+        statement = select(User).where(User.email == target.email)
         found_user = session.exec(statement).first()
         if not found_user:
             return {"message": "user not found"}
 
-        statement = select(Alert).where(Alert.email == new.email)
+        statement = select(Alert).where(Alert.email == target.email)
         alerts = session.exec(statement).all()
 
-        statement = select(Activitylog).where(Activitylog.email == new.email)
+        statement = select(Activitylog).where(Activitylog.email == target.email)
         logs = session.exec(statement).all()
 
         return {
@@ -423,25 +455,33 @@ def investigate(new: Investigate, token: str):
         }
 
 
+
+
 @app.get("/my_sessions")
 def my_sessions(token: str):
     with Session(engine) as session:
         payload = verify_token(token)
+        if not payload:
+            return {"message": "invalid token"}
         email = payload["email"]
         statement = select(SessionTable).where(SessionTable.email == email)
-        found_session = session.exec(statement).all()
-        return found_session
+        sessions = session.exec(statement).all()
+        return sessions
 
 
 @app.post("/logout_sessions")
 def logout_session(token: str, id: int):
     with Session(engine) as session:
         payload = verify_token(token)
+        if not payload:
+            return {"message": "invalid token"}
         email = payload["email"]
         statement = select(SessionTable).where(
-            (SessionTable.email == email) & (SessionTable.id == id)
+            (SessionTable.email == email) & (SessionTable.id ==id)
         )
         found_session = session.exec(statement).first()
+        if not found_session:
+            return{"message":"session not found"}
         found_session.is_active = False
         session.add(found_session)
         session.commit()
@@ -452,6 +492,8 @@ def logout_session(token: str, id: int):
 async def alerts(websocket: WebSocket, token: str):
     await websocket.accept()
     payload = verify_token(token)
+    if not payload:
+            return {"message": "invalid token"}
     email = payload["email"]
     role = payload["role"]
 
@@ -473,19 +515,19 @@ def dashboard():
         users = session.exec(select(User)).all()
         alerts = session.exec(select(Alert)).all()
 
-        count = {}
+        alert_count = {}
         for alert in alerts:
             email = alert.email
 
-            if email not in count:
-                count[email] = 1
+            if email not in alert_count:
+                alert_count[email] = 1
             else:
-                count[email] += 1
+                alert_count[email] += 1
 
         max_email = None
         max_count = 0
 
-        for email, count in count.items():
+        for email, count in alert_count.items():
             if count > max_count:
                 max_count = count
                 max_email = email
@@ -527,9 +569,9 @@ def investigate_session(email: str):
 
         statement = select(SessionTable).where(SessionTable.email == email)
         sessions = session.exec(statement).all()
-        all_session = []
+        session_list = []
         for s in sessions:
-            all_session.append(
+            session_list.append(
                 {
                     "created_at": s.created_at,
                     "is_active": s.is_active,
@@ -549,7 +591,7 @@ def investigate_session(email: str):
             },
             "alerts": alert_list,
             "activity": activities,
-            "sessions": all_session,
+            "sessions": session_list,
         }
 
 
@@ -568,10 +610,12 @@ def delete(id: int):
 def logout(email: str):
     with Session(engine) as session:
         statement = select(SessionTable).where(SessionTable.email == email)
-        users = session.exec(statement).all()
+        sessions = session.exec(statement).all()
+        if not sessions:
+            return{"message":"session not found"}
 
-        for user in users:
-            session.delete(user)
+        for session_record in sessions:
+            session.delete(session_record)
         session.commit()
         return {"message": "session deleted"}
 

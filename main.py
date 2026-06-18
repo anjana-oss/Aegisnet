@@ -117,6 +117,17 @@ connections = []
 # API----------------------------------------------------------------------------------------
 
 
+@app.get("/")
+def root():
+    return{
+        "project":"Aegisnet",
+        "status":"online",
+        "docs":"/docs"
+    }
+
+
+
+
 @app.post("/signup")
 def signup(newuser: UserCreate):
     with Session(engine) as session:

@@ -9,6 +9,7 @@ from datetime import datetime
 from fastapi import Request
 import requests
 from fastapi import WebSocket, WebSocketDisconnect
+import os
 
 app = FastAPI()
 
@@ -75,7 +76,7 @@ class SessionTable(SQLModel, table=True):
     city: str
 
 
-DATABASE_URL = "postgresql://postgres:postgres@localhost:5432/aegisnet"
+DATABASE_URL = os.getenv("DATABASE_URL")
 engine = create_engine(DATABASE_URL)
 SQLModel.metadata.create_all(engine)
 SECRET_KEY = "hjgjhihu8476"

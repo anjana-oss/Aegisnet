@@ -46,3 +46,12 @@ Version 1 Complete.
 
 ### Security Report
 ![Security Report](screenshots/securityreport.png)
+
+
+
+### live API
+
+swagger documentation:
+https://aegisnet-production.up.railway.app/docs
+
+status:online.

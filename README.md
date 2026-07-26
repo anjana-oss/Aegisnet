@@ -59,4 +59,4 @@ swagger documentation(not available now):
 https://aegisnet-production.up.railway.app/docs
 
 swagger docs:
-https://127.0.0.1:8000/docs
+http://127.0.0.1:8000/docs

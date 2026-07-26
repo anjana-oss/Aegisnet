@@ -10,7 +10,8 @@ from fastapi import Request
 import requests
 from fastapi import WebSocket, WebSocketDisconnect
 import os
-
+from dotenv import load_dotenv
+load_dotenv()
 app = FastAPI()
 
 
@@ -75,11 +76,11 @@ class SessionTable(SQLModel, table=True):
     country: str
     city: str
 
-
-DATABASE_URL = os.getenv("DATABASE_URL")
+SECRET_KEY=os.getenv("SECRET_KEY")
+DATABASE_URL = "postgresql://postgres:postgres@localhost:5432/aegisnet"
 engine = create_engine(DATABASE_URL)
+
 SQLModel.metadata.create_all(engine)
-SECRET_KEY = "hjgjhihu8476"
 ALGORITHM = "HS256"
 
 

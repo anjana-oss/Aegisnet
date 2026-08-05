@@ -12,6 +12,7 @@ from fastapi import WebSocket, WebSocketDisconnect
 import os
 from dotenv import load_dotenv
 load_dotenv()
+import redis
 app = FastAPI()
 
 
@@ -82,6 +83,14 @@ engine = create_engine(DATABASE_URL)
 
 SQLModel.metadata.create_all(engine)
 ALGORITHM = "HS256"
+
+
+redis_client = redis.Redis(
+    host="localhost",
+    port=6379,
+    decode_responses=True
+)
+
 
 
 def createtoken(email, role):
@@ -160,11 +169,12 @@ async def login(login: LoginRequest, request: Request):
             session.add(activity_log)
             session.commit()
 
-            statement = select(Activitylog).where(
-                Activitylog.email == login.email, Activitylog.action == "LOGIN_FAILED"
-            )
-            failed_login = session.execute(statement).all()
-            failed_login_count = len(failed_login)
+            redis_client.incr(f"failed:{login.email}")
+            redis_client.expire(f"failed:{login.email}",900)
+            failed_login_count = int(
+             redis_client.get(f"failed:{login.email}")
+             
+)
 
             if failed_login_count == 5:
                 new_alert = Alert(
@@ -196,13 +206,13 @@ async def login(login: LoginRequest, request: Request):
             )
             session.add(activity_log)
             session.commit()
-
-            statement = select(Activitylog).where(
-                Activitylog.email == login.email, Activitylog.action == "LOGIN_FAILED"
-            )
-            failed = session.execute(statement).all()
-            count = len(failed)
-            if count == 5:
+            
+            
+            redis_client.incr(f"failed:{login.email}")
+            redis_client.expire(f"failed:{login.email}", 900)
+            count = int(redis_client.get(f"failed:{login.email}"))
+            
+            if count >= 5:
                 new_alert = Alert(
                     email=login.email,
                     reason="LOGIN_FAILED too many times",
@@ -230,6 +240,7 @@ async def login(login: LoginRequest, request: Request):
         )
         session.add(activity_log)
         session.commit()
+        redis_client.delete(f"failed:{found_user.email}")
         token = createtoken(found_user.email, found_user.role)
 
         ip = "9.9.9.9"
@@ -731,3 +742,5 @@ def security_report(email: str):
             "active_sessions": active_sessions,
             "recommendation": recommendation,
         }
+
+

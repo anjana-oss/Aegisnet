@@ -50,8 +50,13 @@ Version 1 Complete.
 
 
 ### live API
+--delpoyment currently unavailable--
 
-swagger documentation:
+run locally:
+uvicorn main:app --reload
+
+swagger documentation(not available now):
 https://aegisnet-production.up.railway.app/docs
 
-status:online.
+swagger docs:
+http://127.0.0.1:8000/docs

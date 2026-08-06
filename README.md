@@ -7,7 +7,7 @@ A security monitoring and threat detection backend built with FastAPI and Postgr
 - JWT Authentication
 - Role Based Access Control
 - Activity Logging
-- Failed Login Detection
+- Redis-powered failed login tracking and account lockout
 - Alert Generation
 - Risk Score System
 - Account Lockout
@@ -24,10 +24,24 @@ A security monitoring and threat detection backend built with FastAPI and Postgr
 - SQLModel
 - JWT
 - Bcrypt
+- Redis
+- Websocket
+- Railway
 
 ## Project Status
 
-Version 1 Complete.
+current version :v1.1
+
+## latest update:
+-integrated Redis for high-performance failed login tracking
+-optimized account lockout using Redis TTL
+
+##  Latest Improvements
+
+- Integrated Redis for in-memory failed login tracking.
+- Reduced repeated database queries during authentication.
+- Added automatic TTL expiration for temporary login counters.
+- Improved backend performance and scalability.
 
 ## Architecture Diagram
 

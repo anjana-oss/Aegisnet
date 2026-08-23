@@ -11,8 +11,10 @@ import requests
 from fastapi import WebSocket, WebSocketDisconnect
 import os
 from dotenv import load_dotenv
+
 load_dotenv()
 import redis
+
 app = FastAPI()
 
 
@@ -77,20 +79,16 @@ class SessionTable(SQLModel, table=True):
     country: str
     city: str
 
-SECRET_KEY=os.getenv("SECRET_KEY")
-DATABASE_URL = "postgresql://postgres:postgres@localhost:5432/aegisnet"
+
+SECRET_KEY = os.getenv("SECRET_KEY")
+DATABASE_URL = "postgresql://postgres:postgres@host.docker.internal:5432/aegisnet"
 engine = create_engine(DATABASE_URL)
 
 SQLModel.metadata.create_all(engine)
 ALGORITHM = "HS256"
 
 
-redis_client = redis.Redis(
-    host="localhost",
-    port=6379,
-    decode_responses=True
-)
-
+redis_client = redis.Redis(host="localhost", port=6379, decode_responses=True)
 
 
 def createtoken(email, role):
@@ -129,13 +127,7 @@ connections = []
 
 @app.get("/")
 def root():
-    return{
-        "project":"Aegisnet",
-        "status":"online",
-        "docs":"/docs"
-    }
-
-
+    return {"project": "Aegisnet", "status": "online", "docs": "/docs"}
 
 
 @app.post("/signup")
@@ -170,11 +162,8 @@ async def login(login: LoginRequest, request: Request):
             session.commit()
 
             redis_client.incr(f"failed:{login.email}")
-            redis_client.expire(f"failed:{login.email}",900)
-            failed_login_count = int(
-             redis_client.get(f"failed:{login.email}")
-             
-)
+            redis_client.expire(f"failed:{login.email}", 900)
+            failed_login_count = int(redis_client.get(f"failed:{login.email}"))
 
             if failed_login_count == 5:
                 new_alert = Alert(
@@ -206,12 +195,11 @@ async def login(login: LoginRequest, request: Request):
             )
             session.add(activity_log)
             session.commit()
-            
-            
+
             redis_client.incr(f"failed:{login.email}")
             redis_client.expire(f"failed:{login.email}", 900)
             count = int(redis_client.get(f"failed:{login.email}"))
-            
+
             if count >= 5:
                 new_alert = Alert(
                     email=login.email,
@@ -335,14 +323,14 @@ def update(new: Update, token: str, request: Request):
 
         statement = select(User).where(User.email == email)
         found_user = session.exec(statement).first()
-        
+
         if not found_user:
             return {"message": "user not found"}
         hashed_password = bcrypt.hashpw(
             new.password.encode(), bcrypt.gensalt()
         ).decode()
         found_user.username = new.username
-        found_user.password = hashed_password  
+        found_user.password = hashed_password
         session.commit()
 
         log = Activitylog(
@@ -358,7 +346,7 @@ def update(new: Update, token: str, request: Request):
 
 
 @app.delete("/deletedata")
-def deletedata(token: str,request:Request):
+def deletedata(token: str, request: Request):
     with Session(engine) as session:
         payload = verify_token(token)
         if not payload:
@@ -383,7 +371,7 @@ def deletedata(token: str,request:Request):
 
 
 @app.get("/viewlogs")
-def view_log(token: str, limit: int=10, page: int = 1, action: str = None):
+def view_log(token: str, limit: int = 10, page: int = 1, action: str = None):
     with Session(engine) as session:
         payload = verify_token(token)
         if not payload:
@@ -391,11 +379,11 @@ def view_log(token: str, limit: int=10, page: int = 1, action: str = None):
         role = payload["role"]
         if role != "admin":
             return {"message": "access denied"}
-        
-        if page<1:
-            return{"message":"page must be greater than 0"}
-        if limit<1:
-            return{"message":"limit must be greater than 0"}
+
+        if page < 1:
+            return {"message": "page must be greater than 0"}
+        if limit < 1:
+            return {"message": "limit must be greater than 0"}
         offset = (page - 1) * limit
         statement = select(Activitylog)
         if action:
@@ -421,7 +409,7 @@ def view_alert(token: str):
 
 
 @app.post("/unlock_user")
-def unlock_user(new: UnlockUser, token: str,request:Request):
+def unlock_user(new: UnlockUser, token: str, request: Request):
     with Session(engine) as session:
         payload = verify_token(token)
         if not payload:
@@ -435,11 +423,12 @@ def unlock_user(new: UnlockUser, token: str,request:Request):
         if not found_user:
             return {"message": "user not found"}
         found_user.locked_out = False
-        activity_log=Activitylog(
+        activity_log = Activitylog(
             email=payload["email"],
             action="UNLOCK_USER",
             timestamp=datetime.now(),
-            ip_address=request.client.host)
+            ip_address=request.client.host,
+        )
         session.add(activity_log)
         session.commit()
         return {"message": "user unlocked"}
@@ -479,8 +468,6 @@ def investigate_user(target: Investigate, token: str):
         }
 
 
-
-
 @app.get("/my_sessions")
 def my_sessions(token: str):
     with Session(engine) as session:
@@ -501,11 +488,11 @@ def logout_session(token: str, id: int):
             return {"message": "invalid token"}
         email = payload["email"]
         statement = select(SessionTable).where(
-            (SessionTable.email == email) & (SessionTable.id ==id)
+            (SessionTable.email == email) & (SessionTable.id == id)
         )
         found_session = session.exec(statement).first()
         if not found_session:
-            return{"message":"session not found"}
+            return {"message": "session not found"}
         found_session.is_active = False
         session.add(found_session)
         session.commit()
@@ -517,7 +504,7 @@ async def alerts(websocket: WebSocket, token: str):
     await websocket.accept()
     payload = verify_token(token)
     if not payload:
-            return {"message": "invalid token"}
+        return {"message": "invalid token"}
     email = payload["email"]
     role = payload["role"]
 
@@ -636,7 +623,7 @@ def logout(email: str):
         statement = select(SessionTable).where(SessionTable.email == email)
         sessions = session.exec(statement).all()
         if not sessions:
-            return{"message":"session not found"}
+            return {"message": "session not found"}
 
         for session_record in sessions:
             session.delete(session_record)
@@ -742,5 +729,3 @@ def security_report(email: str):
             "active_sessions": active_sessions,
             "recommendation": recommendation,
         }
-
-

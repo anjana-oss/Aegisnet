@@ -6,21 +6,14 @@ redis_client = redis.Redis(
     decode_responses=True
 )
 
-redis_client.set("failed:bestie@gmail.com", 1)
-redis_client.incr("failed:bestie@gmail.com")
-print(redis_client.get("failed:bestie@gmail.com"))
+def test_failed_login_counter():
+    key = "test:failed_login"
 
-
-
-
-
-redis_client.set("failed:bestie@gmail.com", 4)
-redis_client.incr("failed:bestie@gmail.com")
-count = int(redis_client.get("failed:bestie@gmail.com"))
-print(count)
-if count >= 5:
-    print("LOCK ACCOUNT 🚨")
     
-    
-for key in redis_client.keys("*"):
-    print(f"{key} -> {redis_client.get(key)}")
+    redis_client.delete(key)
+    redis_client.set(key, 1)
+    redis_client.incr(key)
+    count = int(redis_client.get(key))
+    assert count == 2
+
+    redis_client.delete(key)

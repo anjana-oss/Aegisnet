@@ -34,4 +34,3 @@ websockets==16.0
 redis
 pytest
 httpx
-httpx2

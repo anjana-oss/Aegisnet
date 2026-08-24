@@ -91,11 +91,15 @@ ALGORITHM = "HS256"
 redis_client = redis.Redis(host="localhost", port=6379, decode_responses=True)
 
 
-def createtoken(email, role):
-    payload = {"email": email, "role": role}
+def createtoken(email, role, session_id=None):
+    payload = {
+        "email": email,
+        "role": role
+    }
+    if session_id is not None:
+        payload["session_id"] = session_id
     token = jwt.encode(payload, SECRET_KEY, ALGORITHM)
     return token
-
 
 def verify_token(token):
     try:
@@ -735,3 +739,135 @@ def security_report(email: str):
 @app.get("/health")
 def health_check():
     return {"status": "healthy"}
+
+
+
+@app.get("/ready")
+def readiness_check():
+
+    database_status = False
+    redis_status = False
+
+    try:
+        with Session(engine) as session:
+            session.exec(select(User).limit(1)).first()
+
+        database_status = True
+    except Exception:
+        database_status = False
+
+    try:
+        redis_client.ping()
+        redis_status = True
+    except Exception:
+        redis_status = False
+
+    if database_status and redis_status:
+        return {
+            "status": "ready",
+            "database": "connected",
+            "redis": "connected"
+        }
+
+    return {
+        "status": "not ready",
+        "database": "connected" if database_status else "disconnected",
+        "redis": "connected" if redis_status else "disconnected"
+    }
+    
+    
+    
+@app.get("/me")
+def get_current_user(token: str):
+
+    with Session(engine) as session:
+
+        payload = verify_token(token)
+
+        if not payload:
+            return {"message": "invalid token"}
+
+        email = payload["email"]
+        statement = select(User).where(User.email == email)
+        user = session.exec(statement).first()
+        if not user:
+            return {"message": "user not found"}
+
+        return {
+            "id": user.id,
+            "username": user.username,
+            "email": user.email,
+            "role": user.role,
+            "risk_score": user.risk_score,
+            "locked_out": user.locked_out
+        }
+        
+    
+        
+        
+@app.post("/logout")
+def logout_current_session(token: str):
+
+    with Session(engine) as session:
+
+        payload = verify_token(token)
+
+        if not payload:
+            return {"message": "invalid token"}
+        email = payload["email"]
+        session_id = payload.get("session_id")
+        if session_id is None:
+            return {"message": "session information missing"}
+
+        statement = select(SessionTable).where(
+            (SessionTable.id == session_id)
+            & (SessionTable.email == email)
+        )
+        found_session = session.exec(statement).first()
+
+        if not found_session:
+            return {"message": "session not found"}
+
+        found_session.is_active = False
+
+        session.add(found_session)
+        session.commit()
+
+        return {
+            "message": "logout successful"
+        }
+        
+        
+
+@app.get("/alerts")
+def get_alerts(
+    token: str,
+    severity: str | None = None,
+    email: str | None = None,
+    limit: int = 20,
+    page: int = 1
+):
+
+    with Session(engine) as session:
+        payload = verify_token(token)
+        if not payload:
+            return {"message": "invalid token"}
+        if payload["role"] != "admin":
+            return {"message": "access denied"}
+        if page < 1:
+            return {"message": "page must be greater than 0"}
+        if limit < 1:
+            return {"message": "limit must be greater than 0"}
+        statement = select(Alert)
+        if severity:
+            statement = statement.where(
+                Alert.severity == severity
+            )
+        if email:
+            statement = statement.where(
+                Alert.email == email
+            )
+        offset = (page - 1) * limit
+        statement = statement.offset(offset).limit(limit)
+        alerts = session.exec(statement).all()
+        return alerts

@@ -315,10 +315,133 @@ def test_account_lockout():
         user = session.exec(select(User).where(User.email == email)).first()
         assert user.locked_out is True
         assert user.risk_score >= 10
-
     response = client.post("/login", json={"email": email, "password": password})
-
     assert response.status_code == 200
     assert response.json()["message"] == "account locked"
 
     cleanup_user(email)
+
+
+def test_health():
+    response = client.get("/health")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "healthy"
+
+
+
+def test_readiness():
+    response = client.get("/ready")
+    assert response.status_code == 200
+    data = response.json()
+    assert "status" in data
+    assert "database" in data
+    assert "redis" in data
+
+    assert data["status"] == "ready"
+    assert data["database"] == "connected"
+    assert data["redis"] == "connected"
+
+
+
+def test_me():
+    email = f"test_{uuid.uuid4().hex[:8]}@example.com"
+    signup_response = client.post(
+        "/signup",
+        json={
+            "username": "metestuser",
+            "email": email,
+            "password": "TestPassword123!"
+        }
+    )
+
+    assert signup_response.status_code == 200
+    login_response = client.post(
+        "/login",
+        json={
+            "email": email,
+            "password": "TestPassword123!"
+        }
+    )
+    assert login_response.status_code == 200
+    token = login_response.json()["access_token"]
+    response = client.get(
+        "/me",
+        params={"token": token}
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["email"] == email
+    assert data["username"] == "metestuser"
+    assert "id" in data
+    assert "role" in data
+    assert "risk_score" in data
+    assert "locked_out" in data
+
+
+
+
+def test_logout():
+    email = f"logout_{uuid.uuid4().hex[:8]}@example.com"
+    signup_response = client.post(
+        "/signup",
+        json={
+            "username": "logoutuser",
+            "email": email,
+            "password": "TestPassword123!"
+        }
+    )
+    assert signup_response.status_code == 200
+
+    login_response = client.post(
+        "/login",
+        json={
+            "email": email,
+            "password": "TestPassword123!"
+        }
+    )
+    assert login_response.status_code == 200
+    token = login_response.json()["access_token"]
+
+
+    response = client.post(
+        "/logout",
+        params={"token": token}
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert "message" in data
+
+
+
+
+def test_alerts():
+    email = f"alert_{uuid.uuid4().hex[:8]}@example.com"
+
+    signup_response = client.post(
+        "/signup",
+        json={
+            "username": "alertuser",
+            "email": email,
+            "password": "TestPassword123!"
+        }
+    )
+    assert signup_response.status_code == 200
+    login_response = client.post(
+        "/login",
+        json={
+            "email": email,
+            "password": "TestPassword123!"
+        }
+    )
+    assert login_response.status_code == 200
+    token = login_response.json()["access_token"]
+
+    response = client.get(
+        "/alerts",
+        params={"token": token}
+    )
+
+    assert response.status_code == 200
+    assert response.json() is not None

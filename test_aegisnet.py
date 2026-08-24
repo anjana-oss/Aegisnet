@@ -1,12 +1,13 @@
 import uuid
 import redis
+import os
 from fastapi.testclient import TestClient
 from sqlmodel import Session, select
 from main import app, engine, User, Activitylog, Alert, SessionTable
 
 client = TestClient(app)
 
-redis_client = redis.Redis(host="redis", port=6379, decode_responses=True)
+redis_client = redis.Redis(host=os.getenv("REDIS_HOST","LOCALHOST"), port=6379, decode_responses=True)
 
 
 def create_test_user(role="user"):

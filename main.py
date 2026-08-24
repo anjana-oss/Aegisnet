@@ -81,7 +81,7 @@ class SessionTable(SQLModel, table=True):
 
 
 SECRET_KEY = os.getenv("SECRET_KEY")
-DATABASE_URL = "postgresql://postgres:postgres@host.docker.internal:5432/aegisnet"
+DATABASE_URL = "postgresql://postgres:postgres@localhost:5432/aegisnet"
 engine = create_engine(DATABASE_URL)
 
 SQLModel.metadata.create_all(engine)
@@ -141,7 +141,7 @@ def signup(newuser: UserCreate):
         )
         session.add(new_user)
         session.commit()
-        return {"message": "deails added"}
+        return {"message": "details added"}
 
 
 @app.post("/login")
@@ -729,3 +729,9 @@ def security_report(email: str):
             "active_sessions": active_sessions,
             "recommendation": recommendation,
         }
+
+
+
+@app.get("/health")
+def health_check():
+    return {"status": "healthy"}

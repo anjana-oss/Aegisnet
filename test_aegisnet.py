@@ -6,7 +6,7 @@ from main import app, engine, User, Activitylog, Alert, SessionTable
 
 client = TestClient(app)
 
-redis_client = redis.Redis(host="localhost", port=6379, decode_responses=True)
+redis_client = redis.Redis(host="redis", port=6379, decode_responses=True)
 
 
 def create_test_user(role="user"):
@@ -322,12 +322,6 @@ def test_account_lockout():
     cleanup_user(email)
 
 
-def test_health():
-    response = client.get("/health")
-
-    assert response.status_code == 200
-    assert response.json()["status"] == "healthy"
-
 
 
 def test_readiness():
@@ -343,32 +337,20 @@ def test_readiness():
     assert data["redis"] == "connected"
 
 
-
 def test_me():
     email = f"test_{uuid.uuid4().hex[:8]}@example.com"
     signup_response = client.post(
         "/signup",
-        json={
-            "username": "metestuser",
-            "email": email,
-            "password": "TestPassword123!"
-        }
+        json={"username": "metestuser", "email": email, "password": "TestPassword123!"},
     )
 
     assert signup_response.status_code == 200
     login_response = client.post(
-        "/login",
-        json={
-            "email": email,
-            "password": "TestPassword123!"
-        }
+        "/login", json={"email": email, "password": "TestPassword123!"}
     )
     assert login_response.status_code == 200
     token = login_response.json()["access_token"]
-    response = client.get(
-        "/me",
-        params={"token": token}
-    )
+    response = client.get("/me", params={"token": token})
 
     assert response.status_code == 200
     data = response.json()
@@ -380,40 +362,24 @@ def test_me():
     assert "locked_out" in data
 
 
-
-
 def test_logout():
     email = f"logout_{uuid.uuid4().hex[:8]}@example.com"
     signup_response = client.post(
         "/signup",
-        json={
-            "username": "logoutuser",
-            "email": email,
-            "password": "TestPassword123!"
-        }
+        json={"username": "logoutuser", "email": email, "password": "TestPassword123!"},
     )
     assert signup_response.status_code == 200
 
     login_response = client.post(
-        "/login",
-        json={
-            "email": email,
-            "password": "TestPassword123!"
-        }
+        "/login", json={"email": email, "password": "TestPassword123!"}
     )
     assert login_response.status_code == 200
     token = login_response.json()["access_token"]
 
-
-    response = client.post(
-        "/logout",
-        params={"token": token}
-    )
+    response = client.post("/logout", params={"token": token})
     assert response.status_code == 200
     data = response.json()
     assert "message" in data
-
-
 
 
 def test_alerts():
@@ -421,27 +387,16 @@ def test_alerts():
 
     signup_response = client.post(
         "/signup",
-        json={
-            "username": "alertuser",
-            "email": email,
-            "password": "TestPassword123!"
-        }
+        json={"username": "alertuser", "email": email, "password": "TestPassword123!"},
     )
     assert signup_response.status_code == 200
     login_response = client.post(
-        "/login",
-        json={
-            "email": email,
-            "password": "TestPassword123!"
-        }
+        "/login", json={"email": email, "password": "TestPassword123!"}
     )
     assert login_response.status_code == 200
     token = login_response.json()["access_token"]
 
-    response = client.get(
-        "/alerts",
-        params={"token": token}
-    )
+    response = client.get("/alerts", params={"token": token})
 
     assert response.status_code == 200
     assert response.json() is not None

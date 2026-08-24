@@ -17,7 +17,7 @@ import redis
 
 app = FastAPI()
 
-
+ALGORITHM = "HS256"
 class User(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     username: str
@@ -81,14 +81,21 @@ class SessionTable(SQLModel, table=True):
 
 
 SECRET_KEY = os.getenv("SECRET_KEY")
-DATABASE_URL = "postgresql://postgres:postgres@localhost:5432/aegisnet"
+DATABASE_URL = os.getenv(
+    "DATABASE_URL",
+    "postgresql://postgres:postgres@localhost:5432/aegisnet"
+)
 engine = create_engine(DATABASE_URL)
 
 SQLModel.metadata.create_all(engine)
-ALGORITHM = "HS256"
 
 
-redis_client = redis.Redis(host="localhost", port=6379, decode_responses=True)
+
+redis_client = redis.Redis(
+    host=os.getenv("REDIS_HOST", "localhost"),
+    port=int(os.getenv("REDIS_PORT", "6379")),
+    decode_responses=True
+)
 
 
 def createtoken(email, role, session_id=None):

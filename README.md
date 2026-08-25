@@ -148,20 +148,19 @@ Swagger documentation:
 ##  Screenshots
 
 ### Security Dashboard
-
 ![Security Dashboard](aegisnet_architecture/screenshots/dashboard.png)
 
 ### User Investigation
-
 ![User Investigation](aegisnet_architecture/screenshots/investigate.png)
 
 ### Security Report
-
 ![Security Report](aegisnet_architecture/screenshots/security_report.png)
 
 ### Signup API
-
 ![Signup API](aegisnet_architecture/screenshots/signup.png)
+
+### Health Check
+![Health Check](aegisnet_architecture/screenshots/health.png)
 
 
 ##  Project Status
